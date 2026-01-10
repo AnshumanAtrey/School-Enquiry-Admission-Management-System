@@ -91,11 +91,9 @@ TWILIO_AUTH_TOKEN=your_auth_token
 TWILIO_PHONE_NUMBER=+1234567890
 WHATSAPP_NUMBER=whatsapp:+14155238886
 
-# SMTP (Optional - mocked in development)
-SMTP_HOST=smtp.gmail.com
-SMTP_PORT=587
-SMTP_USER=school@example.com
-SMTP_PASS=your_app_password
+# Resend (Optional - mocked in development)
+# Get your API key from https://resend.com/api-keys
+RESEND_API_KEY=re_xxxxxxxxxxxxxxxxxxxxxxxxxx
 ```
 
 #### Frontend (`apps/web/.env.local`)
@@ -158,15 +156,44 @@ Password: admin123
 - Success page with token display
 
 ### Module 2: Admission Management (Admin)
-- View and manage all enquiries
+- View and manage all enquiries with advanced filtering
+- **Enhanced Enquiries Table**:
+  - Search by Token ID or Mobile Number (300ms debounce)
+  - Filter by Date (Today/This Week/This Month)
+  - Filter by Class (Nursery to Class 10)
+  - Filter by Status (New/In Progress/Completed)
+  - Slot booking status badge
 - Generate admission forms (pre-filled from enquiry)
 - Upload documents (PDF, JPG, PNG - max 5MB)
 - Track admission status (Draft → Submitted → Approved/Rejected)
+- **Calendar-based Slot Booking**:
+  - Interactive calendar picker with month/week/day views
+  - Color-coded availability (Green: 2+ slots, Yellow: 1 slot, Red: Full)
+  - Admission summary panel
+  - Confirmation dialog showing slot details
 
 ### Module 3: Counselling Slots (Admin)
 - Create counselling slots (fixed capacity: 3)
+- View slots in Calendar or List mode
 - Book slots for admissions
 - Calendar invites sent to parent and principal (mocked in dev)
+
+### Module 4: Admin Dashboard
+- **Real-time Statistics**:
+  - Total Enquiries Today
+  - Total Enquiries This Month
+  - Pending Admissions (Draft status)
+  - Scheduled Counselling Sessions
+- Quick action buttons (Add Enquiry, Create Slot)
+
+### Module 5: Principal Calendar View
+- **Read-only calendar interface** at `/principal/calendar`
+- Month/week/day views with FullCalendar
+- Filter by Today/This Week/All
+- View all scheduled counselling sessions
+- Event details: Student Name, Time, Token ID, Location
+- Statistics dashboard (Total Sessions, Today's count)
+- Same login as admin (principal@school.com)
 
 ### Admin-Editable Templates
 - Enquiry form fields
@@ -239,7 +266,13 @@ In development mode (`NODE_ENV=development`), the following services are mocked:
 
 1. **OTP Service**: OTP is logged to console and returned in API response
 2. **WhatsApp Service**: Messages logged to console instead of sending
-3. **Email Service**: Calendar invites logged to console
+3. **Email Service (Resend)**: Calendar invites logged to console
+
+**For Production:**
+- Set up a [Resend](https://resend.com/) account (free tier available)
+- Get your API key from https://resend.com/api-keys
+- Add `RESEND_API_KEY` to your `.env` file
+- Verify your sending domain in Resend dashboard
 
 ### File Uploads
 

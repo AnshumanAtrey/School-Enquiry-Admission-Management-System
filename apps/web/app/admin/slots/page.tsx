@@ -1,11 +1,12 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Plus, Calendar, Users, Clock, Loader2 } from 'lucide-react'
+import { Plus, Calendar, Users, Clock, Loader2, List, CalendarDays } from 'lucide-react'
 import { getSlots, createSlot, updateSlot } from '@/lib/api'
 import { format, addDays, startOfWeek } from 'date-fns'
+import CalendarView from './CalendarView'
 
-interface Slot {
+export interface Slot {
   _id: string
   date: string
   startTime: string
@@ -36,6 +37,8 @@ export default function SlotsPage() {
   const [creating, setCreating] = useState(false)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
+  const [view, setView] = useState<'list' | 'calendar'>('list')
+  const [selectedSlot, setSelectedSlot] = useState<Slot | null>(null)
 
   // Create form state
   const [newSlot, setNewSlot] = useState({
@@ -122,6 +125,31 @@ export default function SlotsPage() {
         </button>
       </div>
 
+      <div className="flex justify-end mb-6">
+        <div className="bg-gray-100 p-1 rounded-lg inline-flex">
+          <button
+            onClick={() => setView('list')}
+            className={`px-4 py-2 rounded-md text-sm font-medium flex items-center transition-colors ${view === 'list'
+                ? 'bg-white text-gray-900 shadow-sm'
+                : 'text-gray-500 hover:text-gray-900'
+              }`}
+          >
+            <List className="h-4 w-4 mr-2" />
+            List
+          </button>
+          <button
+            onClick={() => setView('calendar')}
+            className={`px-4 py-2 rounded-md text-sm font-medium flex items-center transition-colors ${view === 'calendar'
+                ? 'bg-white text-gray-900 shadow-sm'
+                : 'text-gray-500 hover:text-gray-900'
+              }`}
+          >
+            <CalendarDays className="h-4 w-4 mr-2" />
+            Calendar
+          </button>
+        </div>
+      </div>
+
       {/* Alerts */}
       {error && (
         <div className="mb-6 bg-red-50 border border-red-200 rounded p-3">
@@ -134,11 +162,16 @@ export default function SlotsPage() {
         </div>
       )}
 
-      {/* Slots List */}
+      {/* Slots List or Calendar */}
       {loading ? (
         <div className="flex items-center justify-center h-64">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
         </div>
+      ) : view === 'calendar' ? (
+        <CalendarView
+          slots={slots}
+          onSlotClick={(slot) => setSelectedSlot(slot)}
+        />
       ) : Object.keys(slotsByDate).length === 0 ? (
         <div className="card text-center py-12">
           <Calendar className="h-12 w-12 text-gray-400 mx-auto mb-4" />
@@ -286,6 +319,59 @@ export default function SlotsPage() {
                 ) : (
                   'Create Slot'
                 )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Selected Slot Modal (Details for Calendar) */}
+      {selectedSlot && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-sm w-full mx-4 relative">
+            <button
+              onClick={() => setSelectedSlot(null)}
+              className="absolute top-2 right-2 text-gray-500 hover:text-gray-700"
+            >
+              ✕
+            </button>
+            <h3 className="text-lg font-semibold mb-2">
+              {format(new Date(selectedSlot.date), 'MMMM d, yyyy')}
+            </h3>
+            <div className="flex items-center text-gray-600 mb-4">
+              <Clock className="h-4 w-4 mr-2" />
+              <span>{selectedSlot.startTime} - {selectedSlot.endTime}</span>
+            </div>
+
+            <div className={`p-4 rounded-lg border mb-4 ${statusColors[selectedSlot.status]}`}>
+              <div className="flex justify-between items-center mb-2">
+                <span className="font-medium capitalize">{selectedSlot.status}</span>
+                <span className="text-sm border border-current px-2 py-0.5 rounded-full">
+                  {selectedSlot.bookedCount}/{selectedSlot.capacity} Booked
+                </span>
+              </div>
+
+              {selectedSlot.bookings && selectedSlot.bookings.length > 0 && (
+                <div className="mt-2 pt-2 border-t border-current border-opacity-20">
+                  <p className="text-xs font-semibold mb-1 opacity-80">Bookings:</p>
+                  <ul className="text-sm space-y-1">
+                    {selectedSlot.bookings.map(b => (
+                      <li key={b._id} className="flex justify-between">
+                        <span>{b.admissionId?.studentName || 'Unknown'}</span>
+                        <span className="opacity-70 text-xs font-mono">{b.tokenId}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+
+            <div className="flex justify-end">
+              <button
+                onClick={() => setSelectedSlot(null)}
+                className="btn-secondary w-full"
+              >
+                Close
               </button>
             </div>
           </div>

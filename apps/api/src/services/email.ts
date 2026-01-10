@@ -1,4 +1,8 @@
 import * as ics from 'ics';
+import { Resend } from 'resend';
+
+// Initialize Resend client
+const resend = new Resend(process.env.RESEND_API_KEY);
 
 interface CalendarEventData {
   title: string;
@@ -55,7 +59,7 @@ function generateICSContent(event: CalendarEventData): string {
 }
 
 /**
- * Send calendar invite email to parent
+ * Send calendar invite email to parent using Resend
  * In development mode, email is logged to console
  */
 export async function sendParentCalendarInvite(data: {
@@ -69,6 +73,7 @@ export async function sendParentCalendarInvite(data: {
   location: string;
 }): Promise<SendEmailResult> {
   const schoolName = process.env.SCHOOL_NAME || 'ABC International School';
+  const schoolEmail = process.env.SCHOOL_EMAIL || 'info@school.com';
 
   // Parse time strings to create proper dates
   const [startHour, startMin] = data.slotStartTime.split(':').map(Number);
@@ -82,7 +87,7 @@ export async function sendParentCalendarInvite(data: {
 
   const event: CalendarEventData = {
     title: `Counselling Session - ${schoolName}`,
-    description: `Student: ${data.studentName}\nToken ID: ${data.tokenId}\n\nPlease bring all required documents.`,
+    description: `Student: ${data.studentName}\\nToken ID: ${data.tokenId}\\n\\nPlease bring all required documents.`,
     location: data.location,
     startDate,
     endDate,
@@ -91,10 +96,7 @@ export async function sendParentCalendarInvite(data: {
 
   const icsContent = generateICSContent(event);
 
-  const emailContent = {
-    to: data.parentEmail,
-    subject: `Counselling Slot Confirmation - ${data.tokenId}`,
-    body: `
+  const emailBody = `
 Dear ${data.parentName},
 
 Your counselling session for ${data.studentName}'s admission has been scheduled.
@@ -109,21 +111,16 @@ Please bring all required documents for verification.
 
 Best regards,
 ${schoolName} Admissions Team
-    `.trim(),
-    attachment: {
-      filename: 'counselling-session.ics',
-      content: icsContent
-    }
-  };
+  `.trim();
 
   if (process.env.NODE_ENV === 'development') {
     console.log('========================================');
     console.log('EMAIL SERVICE - PARENT INVITE (MOCK)');
     console.log('----------------------------------------');
-    console.log(`To: ${emailContent.to}`);
-    console.log(`Subject: ${emailContent.subject}`);
+    console.log(`To: ${data.parentEmail}`);
+    console.log(`Subject: Counselling Slot Confirmation - ${data.tokenId}`);
     console.log('Body:');
-    console.log(emailContent.body);
+    console.log(emailBody);
     console.log('----------------------------------------');
     console.log('ICS Content:');
     console.log(icsContent);
@@ -135,17 +132,45 @@ ${schoolName} Admissions Team
     };
   }
 
-  // In production, would use NodeMailer
-  console.log(`[PROD] Would send email to ${data.parentEmail}`);
+  // Production: Use Resend
+  try {
+    const { data: emailData, error } = await resend.emails.send({
+      from: `${schoolName} <${schoolEmail}>`,
+      to: [data.parentEmail],
+      subject: `Counselling Slot Confirmation - ${data.tokenId}`,
+      text: emailBody,
+      attachments: [
+        {
+          filename: 'counselling-session.ics',
+          content: Buffer.from(icsContent).toString('base64'),
+        },
+      ],
+    });
 
-  return {
-    success: true,
-    message: 'Calendar invite email sent to parent'
-  };
+    if (error) {
+      console.error('Resend error:', error);
+      return {
+        success: false,
+        message: `Failed to send email: ${error.message}`
+      };
+    }
+
+    console.log('Email sent successfully via Resend:', emailData?.id);
+    return {
+      success: true,
+      message: 'Calendar invite email sent to parent'
+    };
+  } catch (error: any) {
+    console.error('Email sending error:', error);
+    return {
+      success: false,
+      message: `Failed to send email: ${error.message}`
+    };
+  }
 }
 
 /**
- * Send calendar invite email to principal
+ * Send calendar invite email to principal using Resend
  */
 export async function sendPrincipalCalendarInvite(data: {
   studentName: string;
@@ -158,6 +183,7 @@ export async function sendPrincipalCalendarInvite(data: {
 }): Promise<SendEmailResult> {
   const principalEmail = process.env.PRINCIPAL_EMAIL || 'principal@school.com';
   const schoolName = process.env.SCHOOL_NAME || 'ABC International School';
+  const schoolEmail = process.env.SCHOOL_EMAIL || 'info@school.com';
 
   const [startHour, startMin] = data.slotStartTime.split(':').map(Number);
   const [endHour, endMin] = data.slotEndTime.split(':').map(Number);
@@ -170,7 +196,7 @@ export async function sendPrincipalCalendarInvite(data: {
 
   const event: CalendarEventData = {
     title: `Counselling: ${data.studentName} - ${data.tokenId}`,
-    description: `Student: ${data.studentName}\nParent: ${data.parentName}\nToken ID: ${data.tokenId}`,
+    description: `Student: ${data.studentName}\\nParent: ${data.parentName}\\nToken ID: ${data.tokenId}`,
     location: data.location,
     startDate,
     endDate,
@@ -179,10 +205,7 @@ export async function sendPrincipalCalendarInvite(data: {
 
   const icsContent = generateICSContent(event);
 
-  const emailContent = {
-    to: principalEmail,
-    subject: `Counselling Session - ${data.slotStartTime} - ${data.studentName}`,
-    body: `
+  const emailBody = `
 Counselling Session Scheduled
 
 Student: ${data.studentName}
@@ -191,21 +214,16 @@ Token ID: ${data.tokenId}
 Date: ${data.slotDate.toLocaleDateString('en-IN')}
 Time: ${data.slotStartTime} - ${data.slotEndTime}
 Location: ${data.location}
-    `.trim(),
-    attachment: {
-      filename: 'counselling-session.ics',
-      content: icsContent
-    }
-  };
+  `.trim();
 
   if (process.env.NODE_ENV === 'development') {
     console.log('========================================');
     console.log('EMAIL SERVICE - PRINCIPAL INVITE (MOCK)');
     console.log('----------------------------------------');
-    console.log(`To: ${emailContent.to}`);
-    console.log(`Subject: ${emailContent.subject}`);
+    console.log(`To: ${principalEmail}`);
+    console.log(`Subject: Counselling Session - ${data.slotStartTime} - ${data.studentName}`);
     console.log('Body:');
-    console.log(emailContent.body);
+    console.log(emailBody);
     console.log('========================================');
 
     return {
@@ -214,8 +232,39 @@ Location: ${data.location}
     };
   }
 
-  return {
-    success: true,
-    message: 'Calendar invite email sent to principal'
-  };
+  // Production: Use Resend
+  try {
+    const { data: emailData, error } = await resend.emails.send({
+      from: `${schoolName} <${schoolEmail}>`,
+      to: [principalEmail],
+      subject: `Counselling Session - ${data.slotStartTime} - ${data.studentName}`,
+      text: emailBody,
+      attachments: [
+        {
+          filename: 'counselling-session.ics',
+          content: Buffer.from(icsContent).toString('base64'),
+        },
+      ],
+    });
+
+    if (error) {
+      console.error('Resend error:', error);
+      return {
+        success: false,
+        message: `Failed to send email: ${error.message}`
+      };
+    }
+
+    console.log('Email sent successfully via Resend:', emailData?.id);
+    return {
+      success: true,
+      message: 'Calendar invite email sent to principal'
+    };
+  } catch (error: any) {
+    console.error('Email sending error:', error);
+    return {
+      success: false,
+      message: `Failed to send email: ${error.message}`
+    };
+  }
 }

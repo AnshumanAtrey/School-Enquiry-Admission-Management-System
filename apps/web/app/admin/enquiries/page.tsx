@@ -1,10 +1,10 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import Link from 'next/link'
-import { Search, Filter, ChevronLeft, ChevronRight, Eye, Plus } from 'lucide-react'
+import { Search, Filter, ChevronLeft, ChevronRight, Eye, Plus, Calendar } from 'lucide-react'
 import { getEnquiries } from '@/lib/api'
-import { format } from 'date-fns'
+import { format, startOfDay, startOfWeek, startOfMonth } from 'date-fns'
 
 interface Enquiry {
   _id: string
@@ -16,6 +16,8 @@ interface Enquiry {
   grade: string
   status: 'new' | 'in_progress' | 'converted'
   createdAt: string
+  slotBooked?: boolean
+  bookedCount?: number
 }
 
 const statusColors = {
@@ -37,11 +39,30 @@ export default function EnquiriesPage() {
   const [totalPages, setTotalPages] = useState(1)
   const [total, setTotal] = useState(0)
   const [search, setSearch] = useState('')
+  const [debouncedSearch, setDebouncedSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
+  const [dateFilter, setDateFilter] = useState('')
+  const [classFilter, setClassFilter] = useState('')
 
+  // Debounce search input
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(search)
+    }, 300)
+
+    return () => clearTimeout(timer)
+  }, [search])
+
+  // Fetch when filters or debounced search changes
+  useEffect(() => {
+    setPage(1)
+    fetchEnquiries()
+  }, [debouncedSearch, statusFilter, dateFilter, classFilter])
+
+  // Fetch when page changes
   useEffect(() => {
     fetchEnquiries()
-  }, [page, statusFilter])
+  }, [page])
 
   const fetchEnquiries = async () => {
     setLoading(true)
@@ -49,22 +70,46 @@ export default function EnquiriesPage() {
       page,
       limit: 10,
       status: statusFilter || undefined,
-      search: search || undefined
+      search: debouncedSearch || undefined
     })
 
     if (result.success && result.data) {
-      setEnquiries(result.data.enquiries)
+      let filteredEnquiries = result.data.enquiries
+
+      // Apply date filter client-side
+      if (dateFilter) {
+        const now = new Date()
+        filteredEnquiries = filteredEnquiries.filter((enq: Enquiry) => {
+          const enqDate = new Date(enq.createdAt)
+          switch (dateFilter) {
+            case 'today':
+              return enqDate >= startOfDay(now)
+            case 'week':
+              return enqDate >= startOfWeek(now)
+            case 'month':
+              return enqDate >= startOfMonth(now)
+            default:
+              return true
+          }
+        })
+      }
+
+      // Apply class filter client-side
+      if (classFilter) {
+        filteredEnquiries = filteredEnquiries.filter((enq: Enquiry) =>
+          enq.grade === classFilter
+        )
+      }
+
+      setEnquiries(filteredEnquiries)
       setTotalPages(result.data.totalPages)
       setTotal(result.data.total)
     }
     setLoading(false)
   }
 
-  const handleSearch = (e: React.FormEvent) => {
-    e.preventDefault()
-    setPage(1)
-    fetchEnquiries()
-  }
+  // Get unique grades for filter
+  const uniqueGrades = Array.from(new Set(enquiries.map(e => e.grade))).sort()
 
   return (
     <div>
@@ -76,34 +121,67 @@ export default function EnquiriesPage() {
         </div>
       </div>
 
-      {/* Filters */}
+      {/* Search and Filters */}
       <div className="card mb-6">
-        <div className="flex flex-col sm:flex-row gap-4">
-          <form onSubmit={handleSearch} className="flex-1">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-              <input
-                type="text"
-                className="input pl-10"
-                placeholder="Search by token ID, name, or mobile..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-              />
-            </div>
-          </form>
-          <div className="flex gap-4">
+        <div className="space-y-4">
+          {/* Search Input */}
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+            <input
+              type="text"
+              className="input pl-10 w-full"
+              placeholder="Search by Token ID or Mobile Number..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+          </div>
+
+          {/* Filters Row */}
+          <div className="flex flex-col sm:flex-row gap-4">
+            {/* Date Filter */}
             <select
-              className="input w-40"
+              className="input flex-1"
+              value={dateFilter}
+              onChange={(e) => setDateFilter(e.target.value)}
+            >
+              <option value="">All Dates</option>
+              <option value="today">Today</option>
+              <option value="week">This Week</option>
+              <option value="month">This Month</option>
+            </select>
+
+            {/* Class Filter */}
+            <select
+              className="input flex-1"
+              value={classFilter}
+              onChange={(e) => setClassFilter(e.target.value)}
+            >
+              <option value="">All Classes</option>
+              <option value="Nursery">Nursery</option>
+              <option value="LKG">LKG</option>
+              <option value="UKG">UKG</option>
+              <option value="Class 1">Class 1</option>
+              <option value="Class 2">Class 2</option>
+              <option value="Class 3">Class 3</option>
+              <option value="Class 4">Class 4</option>
+              <option value="Class 5">Class 5</option>
+              <option value="Class 6">Class 6</option>
+              <option value="Class 7">Class 7</option>
+              <option value="Class 8">Class 8</option>
+              <option value="Class 9">Class 9</option>
+              <option value="Class 10">Class 10</option>
+            </select>
+
+            {/* Status Filter */}
+            <select
+              className="input flex-1"
               value={statusFilter}
-              onChange={(e) => {
-                setStatusFilter(e.target.value)
-                setPage(1)
-              }}
+              onChange={(e) => setStatusFilter(e.target.value)}
             >
               <option value="">All Status</option>
               <option value="new">New</option>
               <option value="in_progress">In Progress</option>
-              <option value="converted">Converted</option>
+              <option value="converted">Completed</option>
             </select>
           </div>
         </div>
@@ -140,6 +218,9 @@ export default function EnquiriesPage() {
                     Status
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Slot
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Date
                   </th>
                   <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -167,6 +248,18 @@ export default function EnquiriesPage() {
                       <span className={`px-2 py-1 text-xs font-medium rounded-full ${statusColors[enquiry.status]}`}>
                         {statusLabels[enquiry.status]}
                       </span>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      {enquiry.slotBooked ? (
+                        <span className="px-2 py-1 text-xs font-medium rounded-full bg-green-100 text-green-800">
+                          <Calendar className="h-3 w-3 inline mr-1" />
+                          Booked
+                        </span>
+                      ) : (
+                        <span className="px-2 py-1 text-xs font-medium rounded-full bg-gray-100 text-gray-600">
+                          Not Booked
+                        </span>
+                      )}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                       {format(new Date(enquiry.createdAt), 'dd MMM yyyy')}

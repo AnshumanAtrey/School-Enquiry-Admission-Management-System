@@ -3,9 +3,25 @@
 import { useEffect, useState, useRef } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowLeft, Save, Upload, Trash2, Calendar, Loader2, CheckCircle } from 'lucide-react'
+import { ArrowLeft, Save, Upload, Trash2, Calendar as CalendarIcon, Loader2, CheckCircle, User, Phone, GraduationCap } from 'lucide-react'
 import { getAdmission, updateAdmission, uploadDocument, deleteDocument, getAvailableSlots, bookSlot, getAdmissionTemplate, getDocumentsList } from '@/lib/api'
 import { format } from 'date-fns'
+import { Calendar, dateFnsLocalizer } from 'react-big-calendar'
+import { parse, startOfWeek, getDay } from 'date-fns'
+import { enUS } from 'date-fns/locale'
+import 'react-big-calendar/lib/css/react-big-calendar.css'
+
+const locales = {
+  'en-US': enUS,
+}
+
+const localizer = dateFnsLocalizer({
+  format,
+  parse,
+  startOfWeek,
+  getDay,
+  locales,
+})
 
 interface Admission {
   _id: string
@@ -56,6 +72,8 @@ export default function AdmissionDetailPage() {
   const [uploading, setUploading] = useState(false)
   const [selectedDocType, setSelectedDocType] = useState('')
   const [showSlotModal, setShowSlotModal] = useState(false)
+  const [selectedSlot, setSelectedSlot] = useState<Slot | null>(null)
+  const [showConfirmDialog, setShowConfirmDialog] = useState(false)
   const [bookingSlot, setBookingSlot] = useState(false)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
@@ -159,21 +177,72 @@ export default function AdmissionDetailPage() {
     }
   }
 
-  const handleBookSlot = async (slotId: string) => {
+  const handleSlotSelect = (slot: Slot) => {
+    setSelectedSlot(slot)
+    setShowConfirmDialog(true)
+  }
+
+  const handleBookSlot = async () => {
+    if (!selectedSlot) return
+
     setBookingSlot(true)
     setError('')
 
-    const result = await bookSlot(slotId, admissionId)
+    const result = await bookSlot(selectedSlot._id, admissionId)
 
     if (result.success) {
       setShowSlotModal(false)
-      setSuccess('Counselling slot booked successfully! Calendar invites are being sent.')
+      setShowConfirmDialog(false)
+      setSuccess('✓ Counselling slot booked successfully! Calendar invites are being sent.')
       fetchData()
     } else {
       setError(result.error || 'Failed to book slot')
     }
 
     setBookingSlot(false)
+  }
+
+  // Convert slots to calendar events
+  const calendarEvents = availableSlots.map((slot) => {
+    const start = new Date(`${slot.date}T${slot.startTime}`)
+    const end = new Date(`${slot.date}T${slot.endTime}`)
+    const slotsLeft = slot.capacity - slot.bookedCount
+
+    return {
+      title: `${slotsLeft}/${slot.capacity} available`,
+      start,
+      end,
+      resource: slot,
+    }
+  })
+
+  const eventPropGetter = (event: any) => {
+    const slot = event.resource as Slot
+    const slotsLeft = slot.capacity - slot.bookedCount
+
+    let className = ''
+    if (slotsLeft === 0) {
+      className = 'bg-red-100 text-red-800 border-red-200'
+    } else if (slotsLeft <= 1) {
+      className = 'bg-yellow-100 text-yellow-800 border-yellow-200'
+    } else {
+      className = 'bg-green-100 text-green-800 border-green-200'
+    }
+
+    return {
+      className: `border rounded-md text-xs font-medium cursor-pointer ${className}`,
+      style: {
+        backgroundColor: undefined,
+      }
+    }
+  }
+
+  const EventComponent = ({ event }: any) => {
+    return (
+      <div className="h-full w-full flex items-center justify-center pointer-events-none">
+        {event.title}
+      </div>
+    )
   }
 
   if (loading) {
@@ -436,7 +505,7 @@ export default function AdmissionDetailPage() {
                 onClick={() => setShowSlotModal(true)}
                 className="btn-primary w-full justify-center"
               >
-                <Calendar className="h-4 w-4 mr-2" />
+                <CalendarIcon className="h-4 w-4 mr-2" />
                 Book Counselling Slot
               </button>
             )}
@@ -444,43 +513,135 @@ export default function AdmissionDetailPage() {
         </div>
       </div>
 
-      {/* Slot Booking Modal */}
+      {/* Slot Booking Modal with Calendar */}
       {showSlotModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4 max-h-[80vh] overflow-y-auto">
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg p-6 max-w-4xl w-full max-h-[90vh] overflow-y-auto">
             <h2 className="text-xl font-semibold mb-4">Select Counselling Slot</h2>
 
-            {availableSlots.length === 0 ? (
-              <p className="text-gray-500 text-center py-4">No available slots</p>
-            ) : (
-              <div className="space-y-2">
-                {availableSlots.map((slot) => (
-                  <button
-                    key={slot._id}
-                    onClick={() => handleBookSlot(slot._id)}
-                    disabled={bookingSlot}
-                    className="w-full p-3 text-left border rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50"
-                  >
-                    <div className="flex justify-between items-center">
-                      <div>
-                        <p className="font-medium">{format(new Date(slot.date), 'EEE, dd MMM yyyy')}</p>
-                        <p className="text-sm text-gray-500">{slot.startTime} - {slot.endTime}</p>
-                      </div>
-                      <span className="text-sm text-gray-500">
-                        {slot.bookedCount}/{slot.capacity}
-                      </span>
-                    </div>
-                  </button>
-                ))}
+            {/* Admission Summary */}
+            <div className="mb-6 p-4 bg-blue-50 rounded-lg">
+              <h3 className="text-sm font-semibold text-blue-900 mb-3">Booking For:</h3>
+              <div className="grid grid-cols-2 gap-3 text-sm">
+                <div className="flex items-center text-blue-800">
+                  <User className="h-4 w-4 mr-2" />
+                  <span><strong>Student:</strong> {admission.studentName}</span>
+                </div>
+                <div className="flex items-center text-blue-800">
+                  <GraduationCap className="h-4 w-4 mr-2" />
+                  <span><strong>Grade:</strong> {admission.grade}</span>
+                </div>
+                <div className="flex items-center text-blue-800">
+                  <User className="h-4 w-4 mr-2" />
+                  <span><strong>Parent:</strong> {admission.parentName}</span>
+                </div>
+                <div className="flex items-center text-blue-800">
+                  <Phone className="h-4 w-4 mr-2" />
+                  <span><strong>Mobile:</strong> {admission.mobile}</span>
+                </div>
               </div>
+            </div>
+
+            {/* Calendar */}
+            {availableSlots.length === 0 ? (
+              <p className="text-gray-500 text-center py-8">No available slots</p>
+            ) : (
+              <>
+                <div className="h-[500px] bg-white rounded-lg border mb-4">
+                  <Calendar
+                    localizer={localizer}
+                    events={calendarEvents}
+                    startAccessor="start"
+                    endAccessor="end"
+                    style={{ height: '100%' }}
+                    views={['month', 'week', 'day']}
+                    defaultView="week"
+                    onSelectEvent={(event) => handleSlotSelect(event.resource)}
+                    eventPropGetter={eventPropGetter}
+                    components={{
+                      event: EventComponent
+                    }}
+                  />
+                </div>
+
+                {/* Legend */}
+                <div className="flex gap-4 text-sm mb-4">
+                  <div className="flex items-center">
+                    <div className="w-3 h-3 bg-green-100 border border-green-200 rounded mr-2"></div>
+                    <span>Available (2+ slots)</span>
+                  </div>
+                  <div className="flex items-center">
+                    <div className="w-3 h-3 bg-yellow-100 border border-yellow-200 rounded mr-2"></div>
+                    <span>Limited (1 slot)</span>
+                  </div>
+                  <div className="flex items-center">
+                    <div className="w-3 h-3 bg-red-100 border border-red-200 rounded mr-2"></div>
+                    <span>Full</span>
+                  </div>
+                </div>
+              </>
             )}
 
             <button
               onClick={() => setShowSlotModal(false)}
-              className="btn-secondary w-full mt-4"
+              className="btn-secondary w-full"
             >
               Cancel
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Confirmation Dialog */}
+      {showConfirmDialog && selectedSlot && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[60]">
+          <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+            <h3 className="text-lg font-semibold mb-4">Confirm Slot Booking</h3>
+
+            <div className="mb-4 p-4 bg-gray-50 rounded-lg">
+              <p className="text-sm text-gray-600 mb-2">Selected Slot:</p>
+              <p className="font-medium text-gray-900">
+                {format(new Date(selectedSlot.date), 'EEEE, dd MMMM yyyy')}
+              </p>
+              <p className="text-gray-700">
+                {selectedSlot.startTime} - {selectedSlot.endTime}
+              </p>
+              <p className="text-sm text-gray-600 mt-2">
+                <strong>Availability:</strong> {selectedSlot.capacity - selectedSlot.bookedCount}/{selectedSlot.capacity} slots left
+              </p>
+            </div>
+
+            <div className="mb-4 p-3 bg-blue-50 rounded-lg">
+              <p className="text-sm text-blue-800">
+                <strong>Student:</strong> {admission.studentName} ({admission.grade})
+              </p>
+              <p className="text-sm text-blue-800">
+                <strong>Parent:</strong> {admission.parentName}
+              </p>
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => {
+                  setShowConfirmDialog(false)
+                  setSelectedSlot(null)
+                }}
+                className="btn-secondary flex-1"
+                disabled={bookingSlot}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleBookSlot}
+                disabled={bookingSlot}
+                className="btn-primary flex-1"
+              >
+                {bookingSlot ? (
+                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                ) : null}
+                Confirm Booking
+              </button>
+            </div>
           </div>
         </div>
       )}
